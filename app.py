@@ -353,8 +353,7 @@ if question and st.session_state.vectorstore:
 
         Give proper conceptual answers and try to keep things crisp and simple.
 
-        Make sure to give answer in markdown format. 
-        Behave like a human with text and sounds good to them 
+        If someone ask you things to sumarrize give answer in bullet form
         Previous Chat History:
         {chat_history}
 
