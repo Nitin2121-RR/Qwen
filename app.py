@@ -15,6 +15,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from googleapiclient.discovery import build
 from dotenv import load_dotenv
 
+import yt_dlp
 import os
 
 # =========================
@@ -23,7 +24,10 @@ import os
 
 load_dotenv(".env")
 
-# Use st.secrets on Streamlit Cloud, fallback to .env locally
+# =========================
+# GET SECRETS
+# =========================
+
 def get_secret(key):
     try:
         return st.secrets[key]
@@ -93,7 +97,78 @@ def extract_video_id(url):
     if "watch?v=" in url:
         return url.split("watch?v=")[1].split("&")[0]
 
+    elif "youtu.be/" in url:
+        return url.split("youtu.be/")[1].split("?")[0]
+
     return url
+
+# =========================
+# FETCH TRANSCRIPT FUNCTION
+# =========================
+
+def fetch_transcript(video_id):
+
+    # -------------------------
+    # METHOD 1
+    # youtube-transcript-api
+    # -------------------------
+
+    try:
+
+        api = YouTubeTranscriptApi()
+
+        transcript = api.fetch(video_id)
+
+        full_text = " ".join(
+            [item.text for item in transcript]
+        )
+
+        return full_text
+
+    except Exception as e:
+
+        st.warning(
+            "youtube-transcript-api blocked. Trying yt-dlp fallback..."
+        )
+
+        # -------------------------
+        # METHOD 2
+        # yt-dlp fallback
+        # -------------------------
+
+        try:
+
+            ydl_opts = {
+                "skip_download": True,
+                "writesubtitles": True,
+                "writeautomaticsub": True,
+                "quiet": True
+            }
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+
+                info = ydl.extract_info(
+                    f"https://www.youtube.com/watch?v={video_id}",
+                    download=False
+                )
+
+            subtitles = info.get("automatic_captions")
+
+            if subtitles is None:
+                subtitles = info.get("subtitles")
+
+            if subtitles is None:
+                return None
+
+            transcript_text = str(subtitles)
+
+            return transcript_text
+
+        except Exception as yt_error:
+
+            st.error(f"Both methods failed:\n\n{yt_error}")
+
+            return None
 
 # =========================
 # SESSION STATE
@@ -133,7 +208,6 @@ if st.button("Load Video"):
 
         video_id = extract_video_id(youtube_url)
 
-        # Separate DB for every video
         persist_directory = f"db/{video_id}"
 
         # =========================
@@ -157,13 +231,13 @@ if st.button("Load Video"):
             # FETCH TRANSCRIPT
             # =========================
 
-            api = YouTubeTranscriptApi()
+            full_text = fetch_transcript(video_id)
 
-            transcript = api.fetch(video_id)
+            if full_text is None:
 
-            full_text = " ".join(
-                [item.text for item in transcript]
-            )
+                st.error("Could not fetch transcript")
+
+                st.stop()
 
             # =========================
             # DOCUMENT
@@ -194,7 +268,6 @@ if st.button("Load Video"):
                 persist_directory=persist_directory
             )
 
-            # Save DB
             vectorstore.persist()
 
             st.session_state.vectorstore = vectorstore
@@ -213,14 +286,9 @@ question = st.chat_input("Ask question from video")
 
 if question and st.session_state.vectorstore:
 
-    # =========================
-    # SHOW USER MESSAGE
-    # =========================
-
     with st.chat_message("user"):
         st.markdown(question)
 
-    # Save User Message
     st.session_state.messages.append(
         {
             "role": "user",
@@ -237,7 +305,7 @@ if question and st.session_state.vectorstore:
     )
 
     # =========================
-    # CREATE CHAT HISTORY
+    # CHAT HISTORY
     # =========================
 
     chat_history = ""
@@ -260,13 +328,7 @@ if question and st.session_state.vectorstore:
         """
         You are a helpful YouTube video assistant.
 
-        Give proper conceptual answer as per the context and previous chat history.
-        If possible give a proper answer in bullet points and proper structured way
-
-        Also if it seems to be a normal greeting just great like hey , hello or else 
-        thing is asked not related to the context just give a proper answer of it that 
-        is not related to the context and give a responce like a human greet.
-
+        Give proper conceptual answers and try to keep things crisp and simple.
 
         Previous Chat History:
         {chat_history}
@@ -311,7 +373,7 @@ if question and st.session_state.vectorstore:
     response = chain.invoke(question)
 
     # =========================
-    # SAVE CHAT HISTORY
+    # SAVE HISTORY
     # =========================
 
     st.session_state.chat_history.append(
@@ -320,10 +382,6 @@ if question and st.session_state.vectorstore:
             "answer": response
         }
     )
-
-    # =========================
-    # SAVE ASSISTANT MESSAGE
-    # =========================
 
     st.session_state.messages.append(
         {
