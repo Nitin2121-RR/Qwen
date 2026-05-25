@@ -35,6 +35,15 @@ def get_secret(key):
         return os.getenv(key)
 
 # =========================
+# STREAMLIT CONFIG
+# =========================
+
+st.set_page_config(
+    page_title="Qwen YouTube Chatbot",
+    layout="wide"
+)
+
+# =========================
 # STREAMLIT TITLE
 # =========================
 
@@ -125,7 +134,7 @@ def fetch_transcript(video_id):
 
         return full_text
 
-    except Exception as e:
+    except Exception:
 
         st.warning(
             "youtube-transcript-api blocked. Trying yt-dlp fallback..."
@@ -184,6 +193,26 @@ if "vectorstore" not in st.session_state:
     st.session_state.vectorstore = None
 
 # =========================
+# SIDEBAR
+# =========================
+
+with st.sidebar:
+
+    st.header("Load YouTube Video")
+
+    youtube_url = st.text_input(
+        "Paste YouTube URL"
+    )
+
+    load_video = st.button(
+        "Load Video",
+        use_container_width=True
+    )
+
+    if st.session_state.vectorstore:
+        st.success("Video Loaded ✅")
+
+# =========================
 # SHOW OLD CHATS
 # =========================
 
@@ -193,16 +222,10 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # =========================
-# URL INPUT
-# =========================
-
-youtube_url = st.text_input("Enter YouTube URL")
-
-# =========================
 # LOAD VIDEO
 # =========================
 
-if st.button("Load Video"):
+if load_video:
 
     with st.spinner("Loading Video..."):
 
